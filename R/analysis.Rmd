@@ -1,0 +1,80 @@
+---
+title: "Titanic - Machine Learning from Disaster"
+output:
+  html_document: default
+  html_notebook: default
+  pdf_document: default
+  word_document: default
+---
+
+# Basic stuff
+```{r}
+# Project configuration
+source(file.path('/pub/dev/titanic/local_conf.R'))
+
+library(ggplot2)
+library(scales)
+library(data.table)
+library(xgboost)
+library(Matrix)
+
+options(na.action = 'na.pass')
+
+```
+
+# Data and project files
+```{r}
+train <- fread(file.path(data_dir, 'train.csv'))
+test <- fread(file.path(data_dir, 'test.csv'))
+
+# Remove useless columns
+cols <- c('Name', 'Cabin', 'Ticket')
+train[ , (cols) := NULL]
+test[ , (cols) := NULL]
+
+group_cols <- c('Pclass', 'Sex', 'Embarked')
+median_age <- train[ , list(median_age = median(Age, na.rm = T))
+                     , by = group_cols]
+train <- merge(train, median_age, by = group_cols, all.x = T)
+train[ , Age := ifelse(is.na(Age), median_age, Age)]
+
+train <- train[Embarked %in% c('Q', 'S', 'C')]
+
+```
+
+```{r}
+# Set the model
+model_formula <- formula(Survived ~ -1 + Pclass + Sex + Age + Embarked + Fare + SibSp + Parch)
+
+# Prepare datasets
+model_data <- sparse.model.matrix(model_formula, data = train)
+
+# Fit parameters
+fit <- xgboost(data = model_data
+               , label = train$Survived
+               , nrounds = 250
+               , max_depth = 15
+               , eta = 0.1
+               , objective = 'binary:logistic'
+               , verbose = 1
+               , missing = NA)
+
+# Evaluate
+test_formula <- formula( ~ -1 + Child + Pclass + Sex + Age + Embarked + Fare + SibSp + Parch)
+test_data <- sparse.model.matrix(test_formula, data = test)
+probs <- predict(fit, test_data)
+pred <- as.numeric(probs > 0.5)
+
+results <- data.table(PassengerID = test$PassengerId, Survived = pred)
+
+fwrite()
+```
+
+
+
+
+
+
+
+
+
